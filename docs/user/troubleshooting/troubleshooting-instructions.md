@@ -1,6 +1,6 @@
 # Troubleshooting instructions
 
-<mark style="color:red;">**Full Information is Non-Negotiable. You must always supply all information requested in this document.**</mark>
+<mark style="color:red;">**You must always supply all information requested in this document.**</mark>&#x20;
 
 To ensure we can assist you with any CIPP issue, complete details are essential. This includes all three mandatory screenshots: Permissions Check, GDAP Check, and Tenant Access Check. Without these, we cannot offer support, as they are the foundation for understanding and resolving your issue.
 
@@ -16,7 +16,7 @@ To ensure we can assist you with any CIPP issue, complete details are essential.
 
 **3. Run Tenant Access Check**
 
-* **Post a successful GDAP Check**, choose the relevant tenant and perform a Tenant Access check.
+* **After a GDAP Check**, choose the relevant tenant and perform a Tenant Access check.
 * **What to Share**: A screenshot of the results.
 
 **If Errors Persist After Checks:**
