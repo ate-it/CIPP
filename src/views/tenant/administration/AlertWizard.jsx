@@ -1,27 +1,13 @@
-import React, { useEffect, useState } from 'react'
-import {
-  CBadge,
-  CButton,
-  CCallout,
-  CCard,
-  CCardBody,
-  CCardHeader,
-  CCardTitle,
-  CCol,
-  CForm,
-  CRow,
-  CSpinner,
-  CWidgetStatsA,
-} from '@coreui/react'
+import React, { useState } from 'react'
+import { CBadge, CButton, CCallout, CCol, CForm, CRow, CSpinner } from '@coreui/react'
 import useQuery from 'src/hooks/useQuery'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { Field, Form, FormSpy } from 'react-final-form'
 import { CippPage } from 'src/components/layout'
 import { TenantSelector, TenantSelectorMultiple } from 'src/components/utilities'
 import {
   Condition,
   RFFCFormInput,
-  RFFCFormRadio,
   RFFCFormSwitch,
   RFFSelectSearch,
 } from 'src/components/forms/RFFComponents'
@@ -31,36 +17,59 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCircleNotch } from '@fortawesome/free-solid-svg-icons'
 import CippButtonCard from 'src/components/contentcards/CippButtonCard'
 import alertList from 'src/data/alerts.json'
-import auditLogSchema from 'src/data/auditlogschema.json'
+import auditLogSchema from 'src/data/AuditLogSchema.json'
+import auditLogTemplates from 'src/data/AuditLogTemplates.json'
+import Skeleton from 'react-loading-skeleton'
+import { required } from 'src/validators'
 
 const AlertWizard = () => {
-  const dispatch = useDispatch()
-  let query = useQuery()
-  const tenantDomain = query.get('tenantFilter')
-  const customerId = query.get('customerId')
-  const [queryError, setQueryError] = useState(false)
+  const tenantDomain = useSelector((state) => state.app.currentTenant.defaultDomainName)
   const [genericPostRequest, postResults] = useLazyGenericPostRequestQuery()
   const [alertType, setAlertType] = useState(false)
-  const {
-    data: tenant = {},
-    isFetching,
-    error,
-    isSuccess,
-  } = useListTenantQuery(tenantDomain, customerId)
+  const [recommendedRecurrence, setRecommendedRecurrence] = useState()
+  const [currentFormState, setCurrentFormState] = useState()
+  const [selectedTenant, setSelectedTenant] = useState([])
+  const { data: tenant = {}, isFetching, error, isSuccess } = useListTenantQuery(tenantDomain)
 
-  const onSubmit = (values) => {
-    const shippedValues = {
-      tenantid: tenantDomain,
-      displayName: values.displayName,
-      defaultDomainName: values.defaultDomainName,
-      customerId: customerId,
-    }
-    genericPostRequest({ path: '/api/AlertWizard', values: shippedValues })
+  const onSubmitAudit = (values) => {
+    genericPostRequest({ path: '/api/addAlert', values }).then((res) => {})
   }
+
+  const onSubmitScript = (values) => {
+    //get current time as startDate, to the closest 15 minutes in the future
+    const startDate = new Date()
+    startDate.setMinutes(startDate.getMinutes() + 15 - (startDate.getMinutes() % 15))
+    //unix time, minus a couple of seconds to ensure it runs after the current time
+    const unixTime = Math.floor(startDate.getTime() / 1000) - 45
+    const shippedValues = {
+      TenantFilter: tenantDomain,
+      Name: `${values.command.label} for ${tenantDomain}`,
+      Command: { value: `Get-CIPPAlert${values.command.value.name}` },
+      Parameters: { input: values.input },
+      ScheduledTime: unixTime,
+      Recurrence: values.Recurrence,
+      PostExecution: {
+        Webhook: values.webhook,
+        Email: values.email,
+        PSA: values.psa,
+      },
+    }
+    genericPostRequest({ path: '/api/AddScheduledItem?hidden=true', values: shippedValues }).then(
+      (res) => {},
+    )
+  }
+
   const initialValues = {
     ...tenant[0],
+    ...currentFormState?.values,
+    ...recommendedRecurrence,
   }
+  const [auditFormState, setAuditFormState] = useState()
 
+  const initialValuesAudit = {
+    tenantFilter: [...selectedTenant],
+    ...auditFormState,
+  }
   const recurrenceOptions = [
     { value: '30m', name: 'Every 30 minutes' },
     { value: '1h', name: 'Every hour' },
@@ -71,72 +80,7 @@ const AlertWizard = () => {
     { value: '365d', name: 'Every 365 days' },
   ]
 
-  const presetValues = [
-    { value: 'New-InboxRule', name: 'A new Inbox rule is created' },
-    {
-      value: 'New-InboxRule',
-      name: 'A new Inbox rule is created that forwards e-mails to the RSS feeds folder',
-    },
-
-    { value: 'Set-InboxRule', name: 'A existing Inbox rule is edited' },
-    {
-      value: 'Set-InboxRule',
-      name: 'A existing Inbox rule is edited that forwards e-mails to the RSS feeds folder',
-    },
-
-    {
-      value: 'Add member to role.',
-      name: 'A user has been added to an admin role',
-    },
-    {
-      value: 'Add User.',
-      name: 'A user account was created',
-    },
-    {
-      value: 'Disable account.',
-      name: 'A user account has been disabled',
-    },
-    {
-      value: 'Enable account.',
-      name: 'A user account has been enabled',
-    },
-    {
-      value: 'Update StsRefreshTokenValidFrom Timestamp.',
-      name: 'A user sessions have been revoked',
-    },
-    {
-      value: 'Disable Strong Authentication.',
-      name: 'A users MFA has been disabled',
-    },
-    {
-      value: 'Remove Member from a role.',
-      name: 'A user has been removed from a role',
-    },
-    {
-      value: 'Reset user password.',
-      name: 'A user password has been reset',
-    },
-    {
-      value: 'UserLoggedInFromUnknownLocation',
-      name: 'A user has logged in from a location not in the allowed locations list',
-    },
-    {
-      value: 'Add service principal.',
-      name: 'A service principal has been created',
-    },
-    {
-      value: 'Remove service principal.',
-      name: 'A service principal has been removed',
-    },
-    {
-      value: 'badRepIP',
-      name: 'A user has logged in a using a known VPN, Proxy, Or anonymizer',
-    },
-    {
-      value: 'HostedIP',
-      name: 'A user has logged in a using a known hosting provider IP',
-    },
-  ]
+  const presetValues = auditLogTemplates
 
   const getAuditLogSchema = (logbook) => {
     const common = auditLogSchema.Common
@@ -149,24 +93,46 @@ const AlertWizard = () => {
   }
   const [addedEvent, setAddedEvent] = React.useState(1)
 
-  const getAuditLogSchemaList = (objectName, logbook) => {
-    //get auditLogSchema[logbook][objectName]. return the following object { type: {objectnames value}, data: {if there is a auditLogSchema[logbook][objectnames value], else null} }
-    console.log(objectName)
-    console.log(logbook)
-    const common = auditLogSchema.Common
-    const log = auditLogSchema[logbook]
-    const combined = { ...common, ...log }
-    const object = combined[objectName]
-    if (object) {
-      console.log(object)
-      return { type: object, data: auditLogSchema[logbook][object] }
+  const getRecurrenceOptions = () => {
+    const values = currentFormState?.values
+    if (values) {
+      //console.log(currentFormState)
+      const updatedRecurrenceOptions = recurrenceOptions.map((opt) => ({
+        ...opt,
+        name: opt.name.replace(' (Recommended)', ''),
+      }))
+      const recommendedValue = values.command?.value?.recommendedRunInterval
+      const option = updatedRecurrenceOptions.find((opt) => opt.value === recommendedValue)
+      if (option) {
+        option.name += ' (Recommended)'
+        if (option.value !== recommendedRecurrence?.Recurrence.value) {
+          setRecommendedRecurrence({ Recurrence: { value: option.value, label: option.name } })
+        }
+      }
+      return updatedRecurrenceOptions
     }
-    return { type: 'string', data: null }
   }
+
+  const setAuditForm = (e) => {
+    const preset = presetValues.find((p) => p.value === e.value)
+    setAuditFormState(preset.template)
+    setAddedEvent(preset.template.conditions.length)
+  }
+
+  const dovalues = [
+    //{ value: 'cippcommand', label: 'Execute a CIPP Command' },
+    { value: 'becremediate', name: 'Execute a BEC Remediate' },
+    { value: 'disableuser', name: 'Disable the user in the log entry' },
+    // { value: 'generatelog', label: 'Generate a log entry' },
+    { value: 'generatemail', name: 'Generate an email' },
+    { value: 'generatePSA', name: 'Generate a PSA ticket' },
+    { value: 'generateWebhook', name: 'Generate a webhook' },
+  ]
 
   return (
     <CippPage title="Tenant Details" tenantSelector={false}>
-      {!queryError && (
+      {isFetching && <Skeleton />}
+      {!isFetching && (
         <>
           <CRow className="mb-3">
             <CCol md={3}>
@@ -191,28 +157,41 @@ const AlertWizard = () => {
             <>
               <CRow className="mb-3">
                 <CCol md={8}>
-                  <CippButtonCard title="Tenant Selector" titleType="big" percentage={10}>
+                  <CippButtonCard title="Tenant Selector" titleType="big">
                     Select the tenants you want to include in this Alert.
-                    <TenantSelectorMultiple />
+                    <TenantSelectorMultiple
+                      onChange={(e) => setSelectedTenant(e)}
+                      AllTenants={true}
+                      valueisDomain={true}
+                    />
                   </CippButtonCard>
                 </CCol>
               </CRow>
               <Form
-                onSubmit={onSubmit}
-                initialValues={{ ...initialValues }}
+                onSubmit={onSubmitAudit}
+                initialValues={{ ...initialValuesAudit }}
                 render={({ handleSubmit, submitting, values }) => {
                   return (
-                    <CForm id="alertForm" onSubmit={handleSubmit}>
+                    <CForm id="auditAlertForm" onSubmit={handleSubmit}>
                       <CRow className="mb-3">
                         <CCol md={8}>
-                          <CippButtonCard title="Alert Criteria" titleType="big" percentage={10}>
+                          <CippButtonCard
+                            title="Alert Criteria"
+                            titleType="big"
+                            CardButton={
+                              <CButton type="submit" form="auditAlertForm">
+                                {postResults.isFetching && <CSpinner size="sm" />} Save Alert
+                              </CButton>
+                            }
+                          >
                             <CRow className="mb-3">
                               <CCol>
                                 <RFFSelectSearch
                                   values={presetValues}
-                                  name="command"
+                                  name="preset"
                                   placeholder={'Select a preset'}
                                   label="Select an alert preset, or customize your own"
+                                  onChange={(e) => setAuditForm(e)}
                                 />
                               </CCol>
                             </CRow>
@@ -226,6 +205,7 @@ const AlertWizard = () => {
                                   name="logbook"
                                   placeholder={'Select a log source'}
                                   label="Select the log you which to receive the alert for"
+                                  validate={required}
                                 />
                               </CCol>
                             </CRow>
@@ -243,9 +223,10 @@ const AlertWizard = () => {
                                         return (
                                           <RFFSelectSearch
                                             values={getAuditLogSchema(props.values?.logbook?.value)}
-                                            name={`conditions.${i}.property`}
+                                            name={`conditions.${i}.Property`}
                                             placeholder={'Select a property to alert on'}
                                             label="When property"
+                                            validate={required}
                                           />
                                         )
                                       }}
@@ -254,9 +235,9 @@ const AlertWizard = () => {
                                   <CCol>
                                     <RFFSelectSearch
                                       values={[
-                                        { value: 'eq', name: 'Equals' },
+                                        { value: 'eq', name: 'Equals to' },
                                         { value: 'like', name: 'Like' },
-                                        { value: 'ne', name: 'Not Equals' },
+                                        { value: 'ne', name: 'Not Equals to' },
                                         { value: 'notmatch', name: 'Does not match' },
                                         { value: 'gt', name: 'Greater than' },
                                         { value: 'lt', name: 'Less than' },
@@ -266,6 +247,7 @@ const AlertWizard = () => {
                                       name={`conditions.${i}.Operator`}
                                       placeholder={'Select a command'}
                                       label="is"
+                                      validate={required}
                                     />
                                   </CCol>
                                   <CCol>
@@ -273,26 +255,31 @@ const AlertWizard = () => {
                                       {(props) => {
                                         return (
                                           <>
-                                            {props.values?.conditions?.[i]?.property?.value ===
+                                            {props.values?.conditions?.[i]?.Property?.value ===
                                               'String' && (
                                               <RFFCFormInput
-                                                name={`conditions.${i}.Input`}
+                                                name={`conditions.${i}.Input.value`}
                                                 placeholder={'Select a command'}
                                                 label={`Input`}
+                                                validate={required}
                                               />
                                             )}
                                             {props.values?.conditions?.[
                                               i
-                                            ]?.property?.value.startsWith('List:') && (
+                                            ]?.Property?.value.startsWith('List:') && (
                                               <RFFSelectSearch
                                                 values={
                                                   auditLogSchema[
-                                                    props.values?.conditions?.[i]?.property?.value
+                                                    props.values?.conditions?.[i]?.Property?.value
                                                   ]
+                                                }
+                                                multi={
+                                                  props.values?.conditions?.[i]?.Property?.multi
                                                 }
                                                 name={`conditions.${i}.Input`}
                                                 placeholder={'Select an input from the list'}
                                                 label="Input"
+                                                validate={required}
                                               />
                                             )}
                                           </>
@@ -323,6 +310,24 @@ const AlertWizard = () => {
                                   </CButton>
                                 )}
                               </CCol>
+                              <CRow className="mb-3">
+                                <CCol>
+                                  <RFFSelectSearch
+                                    values={dovalues}
+                                    multi={true}
+                                    name={`actions`}
+                                    placeholder={
+                                      'Select one action or multple actions from the list'
+                                    }
+                                    label="Then perform the following action(s)"
+                                  />
+                                </CCol>
+                              </CRow>
+                              {postResults.isSuccess && (
+                                <CCallout color="success">
+                                  <li>{postResults.data.Results}</li>
+                                </CCallout>
+                              )}
                             </CRow>
                           </CippButtonCard>
                         </CCol>
@@ -337,9 +342,9 @@ const AlertWizard = () => {
             <>
               <CRow className="mb-3">
                 <CCol md={8}>
-                  <CippButtonCard title="Tenant Selector" titleType="big" percentage={10}>
+                  <CippButtonCard title="Tenant Selector" titleType="big">
                     <p className="mb-3">Select the tenants you want to include in this Alert.</p>
-                    <TenantSelectorMultiple />
+                    <TenantSelector />
                   </CippButtonCard>
                 </CCol>
               </CRow>
@@ -350,7 +355,7 @@ const AlertWizard = () => {
                     titleType="big"
                     CardButton={
                       <CButton type="submit" form="alertForm">
-                        Add Schedule
+                        Save Alert
                         {postResults.isFetching && (
                           <FontAwesomeIcon icon={faCircleNotch} spin className="ms-2" size="1x" />
                         )}
@@ -358,7 +363,7 @@ const AlertWizard = () => {
                     }
                   >
                     <Form
-                      onSubmit={onSubmit}
+                      onSubmit={onSubmitScript}
                       initialValues={{ ...initialValues }}
                       render={({ handleSubmit, submitting, values }) => {
                         return (
@@ -373,6 +378,7 @@ const AlertWizard = () => {
                                   name="command"
                                   placeholder={'Select a command'}
                                   label="What alerting script should run"
+                                  validate={required}
                                 />
                               </CCol>
                             </CRow>
@@ -384,9 +390,10 @@ const AlertWizard = () => {
                                       return (
                                         <RFFCFormInput
                                           type="text"
-                                          name={props.values.command.value.inputName}
+                                          name="input"
                                           label={props.values.command.value.inputLabel}
                                           placeholder="Enter a value"
+                                          validate={required}
                                         />
                                       )
                                     }}
@@ -396,32 +403,15 @@ const AlertWizard = () => {
                             </Condition>
                             <CRow className="mb-3">
                               <CCol>
-                                <FormSpy>
-                                  {(props) => {
-                                    const updatedRecurrenceOptions = recurrenceOptions.map(
-                                      (opt) => ({
-                                        ...opt,
-                                        name: opt.name.replace(' (Recommended)', ''),
-                                      }),
-                                    )
-                                    const recommendedValue =
-                                      props.values.command?.value?.recommendedRunInterval
-                                    const option = updatedRecurrenceOptions.find(
-                                      (opt) => opt.value === recommendedValue,
-                                    )
-                                    if (option) {
-                                      option.name += ' (Recommended)'
-                                    }
-                                    return (
-                                      <RFFSelectSearch
-                                        values={updatedRecurrenceOptions}
-                                        name="Recurrence"
-                                        placeholder="Select when this alert should run"
-                                        label="When should the alert run"
-                                      />
-                                    )
-                                  }}
-                                </FormSpy>
+                                <FormSpy
+                                  onChange={(formvalues) => setCurrentFormState(formvalues)}
+                                />
+                                <RFFSelectSearch
+                                  values={getRecurrenceOptions()}
+                                  name="Recurrence"
+                                  placeholder="Select when this alert should run"
+                                  label="When should the alert run"
+                                />
                               </CCol>
                             </CRow>
                             <CRow className="mb-3">
